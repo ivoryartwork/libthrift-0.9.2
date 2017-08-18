@@ -39,35 +39,35 @@ public abstract class TServer {
     /**
      * server transport
      */
-    private TServerTransport serverTransport_;
+    protected TServerTransport serverTransport_;
 
     /**
      * Core processor
      */
-    private TProcessorFactory processorFactory_;
+    protected TProcessorFactory processorFactory_;
 
     /**
      * Input Transport Factory
      */
-    private TTransportFactory inputTransportFactory_;
+    protected TTransportFactory inputTransportFactory_;
 
     /**
      * Output Transport Factory
      */
-    private TTransportFactory outputTransportFactory_;
+    protected TTransportFactory outputTransportFactory_;
 
     /**
      * Input Protocol Factory
      */
-    private TProtocolFactory inputProtocolFactory_;
+    protected TProtocolFactory inputProtocolFactory_;
 
     /**
      * Output Protocol Factory
      */
-    private TProtocolFactory outputProtocolFactory_;
+    protected TProtocolFactory outputProtocolFactory_;
 
 
-    public TServer(Args args) {
+    public TServer(AbstractServerArgs args) {
         processorFactory_ = args.processorFactory;
         serverTransport_ = args.serverTransport;
         inputTransportFactory_ = args.inputTransportFactory;
@@ -80,4 +80,7 @@ public abstract class TServer {
      * 该方法用来启动rpc服务
      */
     public abstract void serve();
+
+    public void stop() {
+    }
 }
