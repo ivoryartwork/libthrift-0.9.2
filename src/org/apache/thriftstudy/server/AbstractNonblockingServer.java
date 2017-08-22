@@ -1,7 +1,7 @@
 package org.apache.thriftstudy.server;
 
-import org.apache.thriftstudy.transport.TNonblockingTransport;
-import org.apache.thriftstudy.transport.TServerTransport;
+import org.apache.thriftstudy.protocol.TProtocol;
+import org.apache.thriftstudy.transport.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -103,6 +103,18 @@ public abstract class AbstractNonblockingServer extends TServer {
 
         protected final AbstractSelectorThread selectorThread_;
 
+        protected TMemoryInputTransport frameTrans_;
+
+        protected TByteArrayOutputStream response_;
+
+        protected TTransport inTrans_;
+
+        protected TTransport outTrans_;
+
+        protected TProtocol inProt_;
+
+        protected TProtocol outProt_;
+
         protected ByteBuffer buffer_;
 
         protected FrameBufferState state_ = FrameBufferState.READING_FRAME_SIZE;
@@ -112,6 +124,14 @@ public abstract class AbstractNonblockingServer extends TServer {
             selectionKey_ = selectionKey;
             selectorThread_ = selectorThread;
             buffer_ = ByteBuffer.allocate(4);
+
+            frameTrans_ = new TMemoryInputTransport();
+            response_ = new TByteArrayOutputStream();
+            inTrans_ = inputTransportFactory_.getTransport(frameTrans_);
+            outTrans_ = outputTransportFactory_.getTransport(new TIOStreamTransport(response_));
+
+            inProt_ = inputProtocolFactory_.getProtocol(inTrans_);
+            outProt_ = outputProtocolFactory_.getProtocol(outTrans_);
         }
 
         public boolean read() {
