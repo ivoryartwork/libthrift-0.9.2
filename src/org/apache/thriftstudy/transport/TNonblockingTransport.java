@@ -12,6 +12,10 @@ import java.nio.channels.Selector;
  */
 public abstract class TNonblockingTransport extends TTransport {
 
+    public abstract boolean startConnect() throws IOException;
+
+    public abstract boolean finishConnect() throws IOException;
+
     public abstract SelectionKey registerSelector(Selector selector, int interestOps) throws IOException;
 
     public abstract int read(ByteBuffer buffer) throws IOException;

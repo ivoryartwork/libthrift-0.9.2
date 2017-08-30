@@ -33,7 +33,16 @@ public abstract class TServer {
             serverTransport = transport;
         }
 
+        public T processorFactory(TProcessorFactory factory) {
+            this.processorFactory = factory;
+            return (T) this;
+        }
 
+        public T protocolFactory(TProtocolFactory factory) {
+            this.inputProtocolFactory = factory;
+            this.outProtocolFactory = factory;
+            return (T) this;
+        }
     }
 
     /**

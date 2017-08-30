@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -184,6 +183,7 @@ public class TThreadedSelectorServer extends AbstractNonblockingServer {
             try {
                 selector.select();
                 processAcceptedConnections();
+                processInterestChanges();
 
                 Iterator<SelectionKey> selectionKeys = selector.selectedKeys().iterator();
                 while (!stopped_ && selectionKeys.hasNext()) {
@@ -216,6 +216,15 @@ public class TThreadedSelectorServer extends AbstractNonblockingServer {
                     break;
                 }
                 registerAccepted(accepted);
+            }
+        }
+
+        private void processInterestChanges() {
+            synchronized (selectInterestChanges) {
+                for (FrameBuffer fb : selectInterestChanges) {
+                    fb.requestSelectInterestChange();
+                }
+                selectInterestChanges.clear();
             }
         }
 
@@ -299,10 +308,22 @@ public class TThreadedSelectorServer extends AbstractNonblockingServer {
 
     @Override
     protected boolean requestInvoke(FrameBuffer frameBuffer) {
-        byte[] data = new byte[16];
-        frameBuffer.buffer_.position(4);
-        frameBuffer.buffer_.get(data, 0, 16);
-        System.out.println(new String(data, Charset.forName("UTF-8")));
-        return false;
+        Invocation invocation = getRunnable(frameBuffer);
+        if (invoker != null) {
+            try {
+                invoker.submit(invocation);
+                return true;
+            } catch (Exception e) {
+                System.out.println("ExecutorService rejected execution!");
+                return false;
+            }
+        } else {
+            invocation.run();
+            return true;
+        }
+    }
+
+    protected Invocation getRunnable(FrameBuffer frameBuffer) {
+        return new Invocation(frameBuffer);
     }
 }

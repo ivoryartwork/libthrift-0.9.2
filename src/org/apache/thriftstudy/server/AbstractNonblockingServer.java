@@ -1,5 +1,6 @@
 package org.apache.thriftstudy.server;
 
+import org.apache.thriftstudy.TException;
 import org.apache.thriftstudy.protocol.TProtocol;
 import org.apache.thriftstudy.transport.*;
 
@@ -8,6 +9,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -40,6 +43,7 @@ public abstract class AbstractNonblockingServer extends TServer {
     protected abstract class AbstractSelectorThread extends Thread {
 
         protected final Selector selector;
+        protected final Set<FrameBuffer> selectInterestChanges = new HashSet<FrameBuffer>();
 
         public AbstractSelectorThread() throws IOException {
             selector = SelectorProvider.provider().openSelector();
@@ -57,6 +61,13 @@ public abstract class AbstractNonblockingServer extends TServer {
                     cleanupSelectionKey(selectionKey);
                 }
             }
+        }
+
+        public void requestSelectInterestChange(FrameBuffer frameBuffer) {
+            synchronized (selectInterestChanges) {
+                selectInterestChanges.add(frameBuffer);
+            }
+            selector.wakeup();
         }
 
         protected void handleWrite(SelectionKey selectionKey) {
@@ -200,6 +211,64 @@ public abstract class AbstractNonblockingServer extends TServer {
         }
 
         public void close() {
+            if (state_ == FrameBufferState.READING_FRAME ||
+                    state_ == FrameBufferState.READ_FRAME_COMPLETE ||
+                    state_ == FrameBufferState.AWAITING_CLOSE) {
+                readBufferBytesAllocated.addAndGet(-buffer_.array().length);
+            }
+            trans_.close();
+
+            //eventHandler...
+        }
+
+        public void invoke() {
+            frameTrans_.reset(buffer_.array());
+            response_.reset();
+            try {
+                processorFactory_.getProcessor(inTrans_).process(inProt_, outProt_);
+                responseReady();
+                return;
+            } catch (TException te) {
+                System.out.println("Exception while invoking!");
+            } catch (Throwable t) {
+                System.out.println("Unexpected throwable while invoking!");
+            }
+            state_ = FrameBufferState.AWAITING_CLOSE;
+            requestSelectInterestChange();
+        }
+
+        public void responseReady() {
+            readBufferBytesAllocated.addAndGet(-buffer_.array().length);
+            if (response_.len() == 0) {
+                state_ = FrameBufferState.AWAITING_REGISTER_READ;
+                buffer_ = null;
+            } else {
+                buffer_ = ByteBuffer.wrap(response_.toByteArray(), 0, response_.len());
+                state_ = FrameBufferState.AWAITING_REGISTER_WRITE;
+            }
+            requestSelectInterestChange();
+        }
+
+        protected void requestSelectInterestChange() {
+            if (Thread.currentThread() == this.selectorThread_) {
+                changeSelectInterests();
+            } else {
+                this.selectorThread_.requestSelectInterestChange(this);
+            }
+        }
+
+        public void changeSelectInterests() {
+            if (state_ == FrameBufferState.AWAITING_REGISTER_WRITE) {
+                selectionKey_.interestOps(SelectionKey.OP_WRITE);
+                state_ = FrameBufferState.WRITING;
+            } else if (state_ == FrameBufferState.AWAITING_REGISTER_READ) {
+                prepareRead();
+            } else if (state_ == FrameBufferState.AWAITING_CLOSE) {
+                close();
+                selectionKey_.cancel();
+            } else {
+                System.out.println("未知状态");
+            }
         }
 
         private boolean internalRead() {

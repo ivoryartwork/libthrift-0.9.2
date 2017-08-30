@@ -1,6 +1,7 @@
 package org.apache.thriftstudy.transport;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
@@ -18,6 +19,14 @@ public class TNonblockingSocket extends TNonblockingTransport {
 
     private final SocketAddress socketAddress_;
     private final SocketChannel socketChannel_;
+
+    public TNonblockingSocket(String host, int port) throws IOException {
+        this(host, port, 0);
+    }
+
+    public TNonblockingSocket(String host, int port, int timeout) throws IOException {
+        this(SocketChannel.open(), timeout, new InetSocketAddress(host, port));
+    }
 
     public TNonblockingSocket(SocketChannel socketChannel) throws IOException {
         this(socketChannel, 0, null);
@@ -44,12 +53,67 @@ public class TNonblockingSocket extends TNonblockingTransport {
         }
     }
 
+    @Override
+    public boolean isOpen() {
+        return socketChannel_.isOpen() && socketChannel_.isConnected();
+    }
+
+    @Override
+    public void open() throws TTransportException {
+        throw new TTransportException("open() is not implemented for TNonblockingSocket");
+    }
+
     /**
      * Closes the transport.
      */
     @Override
     public void close() {
+        try {
+            socketChannel_.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.out.println("关闭连接失败");
+        }
+    }
 
+    @Override
+    public void write(byte[] buf, int off, int len) throws TTransportException {
+        if ((socketChannel_.validOps() & SelectionKey.OP_WRITE) != SelectionKey.OP_WRITE) {
+            throw new TTransportException("Cannot write from read-only socket channel");
+        }
+        try {
+            socketChannel_.write(ByteBuffer.wrap(buf, off, len));
+        } catch (IOException e) {
+            throw new TTransportException(TTransportException.UNKNOWN, e);
+        }
+    }
+
+    @Override
+    public int read(byte[] buf, int off, int len) throws TTransportException {
+        if ((socketChannel_.validOps() & SelectionKey.OP_READ) != SelectionKey.OP_READ) {
+            throw new TTransportException("Cannot read from write-only socket channel");
+        }
+        try {
+            return socketChannel_.read(ByteBuffer.wrap(buf, off, len));
+        } catch (IOException e) {
+            throw new TTransportException(TTransportException.UNKNOWN, e);
+        }
+    }
+
+    @Override
+    public boolean startConnect() throws IOException {
+        return socketChannel_.connect(socketAddress_);
+    }
+
+    /**
+     * 非阻塞模式下判断是否完成连接
+     *
+     * @return
+     * @throws IOException
+     */
+    @Override
+    public boolean finishConnect() throws IOException {
+        return socketChannel_.finishConnect();
     }
 
     @Override
